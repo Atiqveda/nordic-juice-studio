@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
+import JSZip from "jszip";
 import {
   ArrowDownToLine,
   ChevronDown,
@@ -62,6 +63,8 @@ export default function ProductStudio() {
   const [isVoiceSpeaking, setIsVoiceSpeaking] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState("");
+  const [isZipping, setIsZipping] = useState(false);
+  const [zipError, setZipError] = useState("");
   const [script, setScript] = useState("This NORDIC JUICE is insane! 100 percent natural, no sugar, pure energy!");
   const [selectedModel, setSelectedModel] = useState("https://i.pravatar.cc/150?img=32");
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -161,6 +164,31 @@ export default function ProductStudio() {
     setFileName("");
     setImages([]);
     setError("");
+  }
+
+  async function downloadAllVideos() {
+    if (!images.length) return;
+    setIsZipping(true);
+    setZipError("");
+    try {
+      const zip = new JSZip();
+      for (const image of images) {
+        const { blob, extension } = await recordKenBurns(image.url);
+        const safeName = image.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        zip.file(`juice-scene-${image.id}-${safeName}.${extension}`, blob);
+      }
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "nordic-juice-tiktok-scenes.zip";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setZipError(downloadError instanceof Error ? downloadError.message : "Could not export all videos.");
+    } finally {
+      setIsZipping(false);
+    }
   }
 
   return (
@@ -336,9 +364,14 @@ export default function ProductStudio() {
                 <div className="composition-grid">
                   {images.map((image, index) => <ResultTile key={image.id} image={image} index={index} selectedModel={selectedModel} onDelete={() => setImages((current) => current.filter((item) => item.id !== image.id))} />)}
                 </div>
+                <button className="download-all-button" type="button" onClick={() => void downloadAllVideos()} disabled={isZipping}>
+                  {isZipping ? <LoaderCircle className="spin" size={16} /> : <ArrowDownToLine size={16} />}
+                  <span>{isZipping ? "Packing 8 videos\u2026" : "Download All (ZIP)"}</span>
+                </button>
+                {zipError && <div className="feedback error-feedback" role="alert">{zipError}</div>}
               </>
             )}
-            <div className="preview-footer"><span><span className="footer-spark">✳</span> MADE TO MOVE</span><span>8 LOCAL SCENES <i /> MP4 EXPORT</span></div>
+            <div className="preview-footer"><span><span className="footer-spark">✳</span> MADE TO MOVE</span><span>8 LOCAL SCENES <i /> WEBM EXPORT</span></div>
           </section>
         </div>
         <footer className="page-footer"><span>JUICE TIKTOK STUDIO</span><span>FREE BY DESIGN <i /> BUILT FOR THE FEED</span></footer>
@@ -407,9 +440,9 @@ function ResultTile({ image, index, selectedModel, onDelete }: { image: Generate
       <div className="tile-actions">
         <a className="tile-download" href={image.url} download={`juice-take-${index + 1}.${getImageExtension(image.url)}`} aria-label={`Download image ${index + 1}`} title="Download image"><ArrowDownToLine size={15} /></a>
         {videoDownload ? (
-          <a className="tile-download" href={videoDownload.url} download={`juice-take-${index + 1}.${videoDownload.extension}`} aria-label={`Download 5 second video for image ${index + 1}`} title={`Download 5-second ${videoDownload.extension.toUpperCase()}`}><ArrowDownToLine size={15} /></a>
+          <a className="tile-download" href={videoDownload.url} download={`juice-take-${index + 1}.${videoDownload.extension}`} aria-label={`Download 3 second video for image ${index + 1}`} title="Download Video (3s, 1080x1920, WebM)"><ArrowDownToLine size={15} /></a>
         ) : (
-          <button className="tile-download" type="button" onClick={() => void downloadMp4()} disabled={downloading} aria-label={`Create 5 second video for image ${index + 1}`} title="Create 5-second video"><Clapperboard size={15} />{downloading && <LoaderCircle className="spin download-spin" size={12} />}</button>
+          <button className="tile-download" type="button" onClick={() => void downloadMp4()} disabled={downloading} aria-label={`Create 3 second video for image ${index + 1}`} title="Download Video (3s, 1080x1920, WebM)"><Clapperboard size={15} />{downloading && <LoaderCircle className="spin download-spin" size={12} />}</button>
         )}
         <button className="tile-download tile-delete" type="button" onClick={onDelete} aria-label={`Delete ${image.name} scene and video`} title="Delete scene and exported video"><Trash2 size={14} /></button>
       </div>
@@ -435,15 +468,18 @@ function readAsDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-function recordKenBurns(imageUrl: string): Promise<{ blob: Blob; extension: string }> {
+function recordKenBurns(
+  imageUrl: string,
+  { width = 1080, height = 1920, durationMs = 3000 }: { width?: number; height?: number; durationMs?: number } = {},
+): Promise<{ blob: Blob; extension: string }> {
   return new Promise((resolve, reject) => {
     if (typeof MediaRecorder === "undefined") {
-      reject(new Error("MP4 recording is not supported in this browser."));
+      reject(new Error("Video recording is not supported in this browser."));
       return;
     }
     const canvas = document.createElement("canvas");
-    canvas.width = 720;
-    canvas.height = 1280;
+    canvas.width = width;
+    canvas.height = height;
     const context = canvas.getContext("2d");
     if (!context) {
       reject(new Error("Canvas is not available in this browser."));
@@ -453,16 +489,16 @@ function recordKenBurns(imageUrl: string): Promise<{ blob: Blob; extension: stri
     const image = new Image();
     image.onload = () => {
       const stream = canvas.captureStream(30);
-      const mimeType = ["video/mp4;codecs=h264", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
+      const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
       if (!mimeType) {
-        reject(new Error("This browser does not support video recording."));
+        reject(new Error("This browser does not support WebM video recording."));
         return;
       }
       const recorder = new MediaRecorder(stream, { mimeType });
       const chunks: BlobPart[] = [];
       const startedAt = performance.now();
       const frameTimer = window.setInterval(() => {
-        const progress = Math.min((performance.now() - startedAt) / 5000, 1);
+        const progress = Math.min((performance.now() - startedAt) / durationMs, 1);
         const scale = 1 + progress * 0.12;
         const imageRatio = image.width / image.height;
         const canvasRatio = canvas.width / canvas.height;
@@ -483,11 +519,10 @@ function recordKenBurns(imageUrl: string): Promise<{ blob: Blob; extension: stri
         reject(new Error("Video recording failed."));
       };
       recorder.onstop = () => {
-        const extension = mimeType.includes("mp4") ? "mp4" : "webm";
-        const blob = new Blob(chunks, { type: mimeType });
+        const blob = new Blob(chunks, { type: "video/webm" });
         window.clearInterval(frameTimer);
         stream.getTracks().forEach((track) => track.stop());
-        resolve({ blob, extension });
+        resolve({ blob, extension: "webm" });
       };
       recorder.start();
     };
