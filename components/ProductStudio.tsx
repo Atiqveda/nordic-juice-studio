@@ -44,6 +44,11 @@ const creatorStyles = [
   { id: "kitchen", name: "Kitchen creator", avatar: "👩‍🍳", tint: "#ffbd84" },
   { id: "lifestyle", name: "Lifestyle creator", avatar: "👩🏽", tint: "#f5a8bd" },
 ] as const;
+const modelOptions = [
+  "https://i.pravatar.cc/150?img=32",
+  "https://i.pravatar.cc/150?img=26",
+  "https://i.pravatar.cc/150?img=68",
+];
 
 export default function ProductStudio() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -54,9 +59,12 @@ export default function ProductStudio() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceURI, setSelectedVoiceURI] = useState("");
   const [voiceScript, setVoiceScript] = useState("Fresh juice, made for your day.");
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isVoiceSpeaking, setIsVoiceSpeaking] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState("");
+  const [script, setScript] = useState("This NORDIC JUICE is insane! 100 percent natural, no sugar, pure energy!");
+  const [selectedModel, setSelectedModel] = useState("https://i.pravatar.cc/150?img=32");
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   useEffect(() => {
     if (!("speechSynthesis" in window)) return;
@@ -126,16 +134,26 @@ export default function ProductStudio() {
     const utterance = new SpeechSynthesisUtterance(voiceScript.trim() || "Fresh juice, made for your day.");
     const selectedVoice = voices.find((voice) => voice.voiceURI === selectedVoiceURI);
     if (selectedVoice) utterance.voice = selectedVoice;
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+    utterance.onstart = () => setIsVoiceSpeaking(true);
+    utterance.onend = () => setIsVoiceSpeaking(false);
+    utterance.onerror = () => setIsVoiceSpeaking(false);
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   }
 
   function stopVoice() {
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    setIsSpeaking(false);
+    setIsVoiceSpeaking(false);
+  }
+
+  function previewModelVoice() {
+    if (!("speechSynthesis" in window)) return;
+    const utterance = new SpeechSynthesisUtterance(script);
+    utterance.lang = "en-US";
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
   }
 
   function resetImage() {
@@ -230,8 +248,8 @@ export default function ProductStudio() {
                 <span className="field-count">{voiceScript.length}/180</span>
               </label>
               <div className="voice-actions">
-                <button className="voice-button" type="button" onClick={previewVoice} disabled={isSpeaking}><Mic size={14} /> Preview voice</button>
-                {isSpeaking && <button className="voice-stop-button" type="button" onClick={stopVoice}>Stop</button>}
+                <button className="voice-button" type="button" onClick={previewVoice} disabled={isVoiceSpeaking}><Mic size={14} /> Preview voice</button>
+                {isVoiceSpeaking && <button className="voice-stop-button" type="button" onClick={stopVoice}>Stop</button>}
               </div>
               <p className="local-note">Uses your browser’s built-in voice at no cost. Video exports are silent.</p>
             </div>
@@ -270,9 +288,55 @@ export default function ProductStudio() {
               <div className="phone-home" />
             </div>}
             {images.length > 0 && (
-              <div className="composition-grid">
-                {images.map((image, index) => <ResultTile key={image.id} image={image} index={index} onDelete={() => setImages((current) => current.filter((item) => item.id !== image.id))} />)}
-              </div>
+              <>
+                <div style={{ background: "#ffffff", borderRadius: 16, padding: 20, marginBottom: 20 }}>
+                  <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, color: "#11130f" }}>Step 2: Voice + Model</h3>
+                  <textarea
+                    value={script}
+                    onChange={(event) => setScript(event.target.value)}
+                    style={{ width: "100%", height: 80, borderRadius: 8, border: "1px solid #ddd", padding: 8, fontFamily: "inherit", resize: "vertical", color: "#11130f" }}
+                  />
+                  <p style={{ margin: "14px 0 8px", fontSize: 13, fontWeight: 600, color: "#11130f" }}>Choose AI Model:</p>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    {modelOptions.map((url) => (
+                      <img
+                        key={url}
+                        src={url}
+                        alt="AI model option"
+                        onClick={() => setSelectedModel(url)}
+                        style={{
+                          width: 60,
+                          height: 60,
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                          cursor: "pointer",
+                          border: selectedModel === url ? "3px solid #22c55e" : "3px solid transparent",
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={previewModelVoice}
+                    style={{ marginTop: 16, padding: "10px 18px", borderRadius: 8, border: "none", background: "#11130f", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                  >
+                    🔊 Preview Voice + Model
+                  </button>
+                  {isSpeaking && (
+                    <div style={{ marginTop: 16 }}>
+                      <img
+                        src={selectedModel}
+                        alt="Speaking model preview"
+                        className="model-pulse"
+                        style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: "4px solid #c8ff00" }}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="composition-grid">
+                  {images.map((image, index) => <ResultTile key={image.id} image={image} index={index} selectedModel={selectedModel} onDelete={() => setImages((current) => current.filter((item) => item.id !== image.id))} />)}
+                </div>
+              </>
             )}
             <div className="preview-footer"><span><span className="footer-spark">✳</span> MADE TO MOVE</span><span>8 LOCAL SCENES <i /> MP4 EXPORT</span></div>
           </section>
@@ -307,7 +371,7 @@ function escapeXml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function ResultTile({ image, index, onDelete }: { image: GeneratedImage; index: number; onDelete: () => void }) {
+function ResultTile({ image, index, selectedModel, onDelete }: { image: GeneratedImage; index: number; selectedModel: string; onDelete: () => void }) {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
   const [videoDownload, setVideoDownload] = useState<{ url: string; extension: string } | null>(null);
@@ -332,6 +396,12 @@ function ResultTile({ image, index, onDelete }: { image: GeneratedImage; index: 
   return (
     <article className={`result-tile result-tile-${index}`}>
       <img className="result-image" src={image.url} alt={`${image.name} product scene`} />
+      <img
+        className="tile-model-avatar"
+        src={selectedModel}
+        alt="Selected AI model"
+        style={{ position: "absolute", top: 10, left: 10, width: 50, height: 50, borderRadius: "50%", border: "2px solid #fff", objectFit: "cover", zIndex: 2 }}
+      />
       <div className="tile-shade" />
       <div className="tile-top"><span>0{index + 1} · {image.name.toUpperCase()}</span><span className="tile-source">LOCAL</span></div>
       <div className="tile-actions">
