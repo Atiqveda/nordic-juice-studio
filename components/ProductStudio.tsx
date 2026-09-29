@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Clapperboard,
   ImagePlus,
+  Lock,
   LoaderCircle,
   Mic,
   Sparkles,
@@ -232,6 +233,11 @@ export default function ProductStudio() {
           <span>juice<span className="brand-light"> tiktok studio</span></span>
         </a>
         <div className="topbar-right">
+          <span className="privacy-pill">
+            <Lock size={11} />
+            <span className="privacy-pill-full">Private — everything runs in your browser, we store nothing</span>
+            <span className="privacy-pill-short">Private · no storage</span>
+          </span>
           <span className="free-pill"><span /> FREE FOREVER</span>
           <button className="avatar-button" type="button" aria-label="Studio menu">
             JS <ChevronDown size={13} />
@@ -380,6 +386,7 @@ export default function ProductStudio() {
               )}
               <div className="phone-home" />
             </div>}
+            {productImage && <ThreeBottlePreview productImage={productImage} />}
             {images.length > 0 && (
               <>
                 <div style={{ background: "#ffffff", borderRadius: 16, padding: 20, marginBottom: 20 }}>
@@ -439,6 +446,39 @@ export default function ProductStudio() {
             <div className="preview-footer"><span><span className="footer-spark">✳</span> MADE TO MOVE</span><span>8 LOCAL SCENES <i /> WEBM EXPORT</span></div>
           </section>
         </div>
+
+        <section className="pricing-section" aria-label="Pricing">
+          <div className="pricing-head">
+            <span className="panel-kicker">PRICING</span>
+            <h2>Simple, transparent pricing</h2>
+            <p className="intro-copy">Start free forever. Upgrade anytime for higher-res exports, more scenes, and 3D spins.</p>
+          </div>
+          <div className="pricing-grid">
+            <div className="pricing-card">
+              <div className="pricing-plan">FREE FOREVER</div>
+              <div className="pricing-price">$0<span>/mo</span></div>
+              <ul className="pricing-features">
+                <li>8 scenes</li>
+                <li>WEBM export</li>
+                <li>720p resolution</li>
+              </ul>
+              <span className="pricing-cta pricing-cta-muted">Current plan</span>
+            </div>
+            <div className="pricing-card pricing-card-pro">
+              <div className="pricing-badge">MOST POPULAR</div>
+              <div className="pricing-plan">PRO</div>
+              <div className="pricing-price">$19<span>/mo</span></div>
+              <ul className="pricing-features">
+                <li>20 scenes</li>
+                <li>4K resolution</li>
+                <li>3D bottle spins</li>
+                <li>No watermark</li>
+              </ul>
+              <a className="pricing-cta" href="#upgrade">Upgrade to PRO</a>
+            </div>
+          </div>
+        </section>
+
         <footer className="page-footer"><span>JUICE TIKTOK STUDIO</span><span>FREE BY DESIGN <i /> BUILT FOR THE FEED</span></footer>
       </section>
     </main>
@@ -447,6 +487,159 @@ export default function ProductStudio() {
 
 function StepLabel({ number, title }: { number: string; title: string }) {
   return <div className="step-label"><span>{number}</span><strong>{title}</strong></div>;
+}
+
+function ThreeBottlePreview({ productImage }: { productImage: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- three.js is loaded from a CDN with no local types
+  const rendererRef = useRef<{ renderer: any; domElement: HTMLCanvasElement } | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [downloadError, setDownloadError] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let cancelled = false;
+    let frameId = 0;
+    let dragging = false;
+    let lastX = 0;
+    let rotationY = 0;
+    let autoRotate = true;
+    let cleanupListeners: (() => void) | undefined;
+
+    setLoadError("");
+
+    (async () => {
+      try {
+        const threeUrl = "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- three.js is loaded from a CDN with no local types
+        const THREE = await (import(/* webpackIgnore: true */ threeUrl) as Promise<any>);
+        if (cancelled || !container) return;
+
+        const width = container.clientWidth || 320;
+        const height = container.clientHeight || 320;
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100);
+        camera.position.set(0, 0, 6);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        container.innerHTML = "";
+        container.appendChild(renderer.domElement);
+
+        const texture = new THREE.TextureLoader().load(productImage);
+        if ("colorSpace" in texture && "SRGBColorSpace" in THREE) texture.colorSpace = THREE.SRGBColorSpace;
+        const geometry = new THREE.CylinderGeometry(1.4, 1.4, 3.6, 64, 1, true);
+        const material = new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide, transparent: true, roughness: 0.35, metalness: 0.05 });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        const keyLight = new THREE.DirectionalLight(0xffffff, 1.1);
+        keyLight.position.set(3, 4, 5);
+        scene.add(keyLight);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+        const rimLight = new THREE.DirectionalLight(0xc8ff00, 0.4);
+        rimLight.position.set(-3, -2, -4);
+        scene.add(rimLight);
+
+        const onPointerDown = (event: PointerEvent) => {
+          dragging = true;
+          autoRotate = false;
+          lastX = event.clientX;
+        };
+        const onPointerMove = (event: PointerEvent) => {
+          if (!dragging) return;
+          rotationY += (event.clientX - lastX) * 0.01;
+          lastX = event.clientX;
+        };
+        const onPointerUp = () => {
+          dragging = false;
+        };
+        renderer.domElement.addEventListener("pointerdown", onPointerDown);
+        window.addEventListener("pointermove", onPointerMove);
+        window.addEventListener("pointerup", onPointerUp);
+        cleanupListeners = () => {
+          renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+          window.removeEventListener("pointermove", onPointerMove);
+          window.removeEventListener("pointerup", onPointerUp);
+        };
+
+        const animate = () => {
+          if (cancelled) return;
+          if (autoRotate) rotationY += 0.004;
+          mesh.rotation.y = rotationY;
+          renderer.render(scene, camera);
+          frameId = requestAnimationFrame(animate);
+        };
+        animate();
+
+        rendererRef.current = { renderer, domElement: renderer.domElement };
+      } catch {
+        if (!cancelled) setLoadError("3D preview needs WebGL support in this browser.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frameId);
+      cleanupListeners?.();
+      const active = rendererRef.current;
+      if (active) {
+        active.renderer.dispose();
+        active.domElement.remove();
+      }
+      rendererRef.current = null;
+    };
+  }, [productImage]);
+
+  async function downloadTurntable() {
+    const active = rendererRef.current;
+    if (!active) return;
+    setIsRecording(true);
+    setDownloadError("");
+    try {
+      const canvas = active.domElement;
+      const stream = canvas.captureStream(30);
+      const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
+      if (!mimeType) throw new Error("This browser does not support WebM recording.");
+      const recorder = new MediaRecorder(stream, { mimeType });
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) chunks.push(event.data); };
+      const finished = new Promise<Blob>((resolve) => {
+        recorder.onstop = () => resolve(new Blob(chunks, { type: "video/webm" }));
+      });
+      recorder.start();
+      await new Promise((resolve) => window.setTimeout(resolve, 4000));
+      recorder.stop();
+      const blob = await finished;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "nordic-juice-3d-turntable.webm";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (recordError) {
+      setDownloadError(recordError instanceof Error ? recordError.message : "Could not record the 3D turntable.");
+    } finally {
+      setIsRecording(false);
+    }
+  }
+
+  return (
+    <div className="three-bottle-card">
+      <div className="three-bottle-head"><span className="panel-kicker">3D PREVIEW</span><h3>Spin your bottle</h3></div>
+      <div className="three-canvas-wrap" ref={containerRef} />
+      {loadError && <div className="feedback error-feedback" role="alert">{loadError}</div>}
+      <button className="download-all-button" type="button" onClick={() => void downloadTurntable()} disabled={isRecording}>
+        {isRecording ? <LoaderCircle className="spin" size={16} /> : <Clapperboard size={16} />}
+        <span>{isRecording ? "Recording turntable\u2026" : "Download 3D Turntable WEBM"}</span>
+      </button>
+      {downloadError && <div className="feedback error-feedback" role="alert">{downloadError}</div>}
+      <p className="local-note">Drag to rotate. Renders fully in your browser via WebGL (three.js loaded from CDN).</p>
+    </div>
+  );
 }
 
 function createCompositionImage(
