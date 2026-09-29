@@ -68,6 +68,11 @@ export default function ProductStudio() {
   const [script, setScript] = useState("This NORDIC JUICE is insane! 100 percent natural, no sugar, pure energy!");
   const [selectedModel, setSelectedModel] = useState("https://i.pravatar.cc/150?img=32");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isRemovingBg, setIsRemovingBg] = useState(false);
+  const [depth, setDepth] = useState(15);
+  const [brandName, setBrandName] = useState("");
+  const [brandFont, setBrandFont] = useState<"bold" | "luxury" | "minimal">("bold");
+  const brandCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (!("speechSynthesis" in window)) return;
@@ -79,6 +84,21 @@ export default function ProductStudio() {
       window.speechSynthesis.removeEventListener("voiceschanged", updateVoices);
     };
   }, []);
+
+  useEffect(() => {
+    const canvas = brandCanvasRef.current;
+    if (!canvas || !productImage) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!brandName.trim()) return;
+    const fontMap: Record<typeof brandFont, string> = {
+      bold: "900 34px 'Arial Black', Arial, sans-serif",
+      luxury: "italic 400 32px Georgia, 'Times New Roman', serif",
+      minimal: "300 30px 'Helvetica Neue', Arial, sans-serif",
+    };
+    drawCurvedText(ctx, brandName.toUpperCase(), canvas.width / 2, canvas.height * 0.86, canvas.height * 0.7, fontMap[brandFont]);
+  }, [brandName, brandFont, productImage]);
 
   async function loadImage(file?: File) {
     if (!file) return;
@@ -96,6 +116,20 @@ export default function ProductStudio() {
 
     setFileName(file.name);
     setProductImage(await readAsDataUrl(file));
+
+    setIsRemovingBg(true);
+    try {
+      const bgRemovalModuleUrl = "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.mjs";
+      const { removeBackground } = await (import(
+        /* webpackIgnore: true */ bgRemovalModuleUrl
+      ) as Promise<typeof import("@imgly/background-removal")>);
+      const cutout = await removeBackground(file);
+      setProductImage(await readAsDataUrl(cutout));
+    } catch {
+      setError("Background removal isn’t available right now, using your original photo.");
+    } finally {
+      setIsRemovingBg(false);
+    }
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -220,7 +254,7 @@ export default function ProductStudio() {
           <section className="control-panel" aria-label="Video generation settings">
             <div className="panel-head">
               <div><span className="panel-kicker">NEW PROJECT</span><h2>Choose your scenes</h2></div>
-              <span className="step-count">01 — 02</span>
+              <span className="step-count">01 — 05</span>
             </div>
 
             <div className="form-step">
@@ -228,7 +262,8 @@ export default function ProductStudio() {
               {productImage ? (
                 <div className="upload-filled">
                   <div className="upload-thumb"><img src={productImage} alt="Uploaded product" /></div>
-                  <div className="upload-meta"><strong>{fileName || "Edited product image"}</strong><span>Ready for your scene</span></div>
+                  <div className="upload-meta"><strong>{fileName || "Edited product image"}</strong><span>{isRemovingBg ? "Removing background\u2026" : "Ready for your scene"}</span></div>
+                  {isRemovingBg && <LoaderCircle className="spin upload-bg-spinner" size={14} />}
                   <button className="remove-image" type="button" onClick={resetImage} aria-label="Remove product image"><X size={15} /></button>
                 </div>
               ) : (
@@ -249,12 +284,29 @@ export default function ProductStudio() {
             </div>
 
             <div className="form-step">
-              <StepLabel number="02" title="Create eight options" />
+              <StepLabel number="02" title="Brand & 3D bottle" />
+              <label className="field-wrap field-wrap-single">
+                <input type="text" placeholder="Brand name" value={brandName} onChange={(event) => setBrandName(event.target.value)} maxLength={22} aria-label="Brand name" />
+              </label>
+              <div className="font-select-row">
+                {((["bold", "luxury", "minimal"] as const)).map((font) => (
+                  <button key={font} type="button" className={`font-chip ${brandFont === font ? "active" : ""}`} onClick={() => setBrandFont(font)}>{font}</button>
+                ))}
+              </div>
+              <label className="depth-slider-wrap">
+                <span>3D Depth <strong>{depth}°</strong></span>
+                <input type="range" min={0} max={30} value={depth} onChange={(event) => setDepth(Number(event.target.value))} aria-label="3D bottle depth" />
+              </label>
+              <p className="local-note">Tilts your bottle in 3D and curves your brand name across the label.</p>
+            </div>
+
+            <div className="form-step">
+              <StepLabel number="03" title="Create eight options" />
               <p className="local-note">Eight colorful scenes, made right here on your device.</p>
             </div>
 
             <div className="form-step">
-              <StepLabel number="03" title="Creator style" />
+              <StepLabel number="04" title="Creator style" />
               <label className="field-wrap field-wrap-single">
                 <select value={creatorId} onChange={(event) => setCreatorId(event.target.value)} aria-label="Creator style">
                   {creatorStyles.map((style) => <option key={style.id} value={style.id}>{style.avatar} {style.name}</option>)}
@@ -264,7 +316,7 @@ export default function ProductStudio() {
             </div>
 
             <div className="form-step">
-              <StepLabel number="04" title="Voice preview" />
+              <StepLabel number="05" title="Voice preview" />
               <label className="field-wrap field-wrap-single">
                 <select value={selectedVoiceURI} onChange={(event) => setSelectedVoiceURI(event.target.value)} aria-label="System voice">
                   <option value="">System default voice</option>
@@ -304,7 +356,17 @@ export default function ProductStudio() {
                   {productImage ? (
                     <>
                       <div className="sample-glow" />
-                      <img className="sample-product" src={productImage} alt="Product preview before generation" />
+                      <img
+                        className="sample-product"
+                        src={productImage}
+                        alt="Product preview before generation"
+                        style={{
+                          transform: `perspective(1000px) rotateY(-${depth}deg) rotateX(5deg)`,
+                          filter: `drop-shadow(${Math.round(depth * 0.6)}px ${Math.round(depth * 1.4)}px ${Math.round(10 + depth)}px rgba(0,0,0,.45))`,
+                        }}
+                      />
+                      <div className="sample-highlight" style={{ opacity: 0.22 + depth / 90 }} />
+                      <canvas ref={brandCanvasRef} className="brand-canvas" width={320} height={200} aria-hidden="true" />
                       <div className="sample-label"><span>PREVIEW</span><strong>Your product, in focus.</strong><small>Your scene will appear here</small></div>
                     </>
                   ) : (
@@ -402,6 +464,40 @@ function createCompositionImage(
 
 function escapeXml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function drawCurvedText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  font: string,
+) {
+  ctx.save();
+  ctx.font = font;
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "rgba(10,12,9,.55)";
+  ctx.lineWidth = 3;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.translate(centerX, centerY);
+  ctx.rotate(-Math.PI / 2);
+  const chars = text.split("");
+  const angles = chars.map((char) => ctx.measureText(char).width / radius);
+  const total = angles.reduce((sum, value) => sum + value, 0);
+  ctx.rotate(-total / 2);
+  chars.forEach((char, index) => {
+    const half = angles[index] / 2;
+    ctx.rotate(half);
+    ctx.save();
+    ctx.rotate(Math.PI / 2);
+    ctx.strokeText(char, 0, -radius);
+    ctx.fillText(char, 0, -radius);
+    ctx.restore();
+    ctx.rotate(half);
+  });
+  ctx.restore();
 }
 
 function ResultTile({ image, index, selectedModel, onDelete }: { image: GeneratedImage; index: number; selectedModel: string; onDelete: () => void }) {
