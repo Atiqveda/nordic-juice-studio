@@ -115,8 +115,6 @@ export default function ProductStudio() {
     }
 
     setFileName(file.name);
-    setProductImage(await readAsDataUrl(file));
-
     setIsRemovingBg(true);
     try {
       const bgRemovalModuleUrl = "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.mjs";
@@ -127,6 +125,7 @@ export default function ProductStudio() {
       setProductImage(await readAsDataUrl(cutout));
     } catch {
       setError("Background removal isn’t available right now, using your original photo.");
+      setProductImage(await readAsDataUrl(file));
     } finally {
       setIsRemovingBg(false);
     }
@@ -261,10 +260,14 @@ export default function ProductStudio() {
               <StepLabel number="01" title="Product image" />
               {productImage ? (
                 <div className="upload-filled">
-                  <div className="upload-thumb"><img src={productImage} alt="Uploaded product" /></div>
-                  <div className="upload-meta"><strong>{fileName || "Edited product image"}</strong><span>{isRemovingBg ? "Removing background\u2026" : "Ready for your scene"}</span></div>
-                  {isRemovingBg && <LoaderCircle className="spin upload-bg-spinner" size={14} />}
+                  <div className="upload-thumb"><img src={productImage} alt="Uploaded product, background removed" /></div>
+                  <div className="upload-meta"><strong>{fileName || "Edited product image"}</strong><span>Background removed · ready for your scene</span></div>
                   <button className="remove-image" type="button" onClick={resetImage} aria-label="Remove product image"><X size={15} /></button>
+                </div>
+              ) : isRemovingBg ? (
+                <div className="upload-filled upload-processing">
+                  <div className="upload-thumb upload-thumb-loading"><LoaderCircle className="spin" size={20} /></div>
+                  <div className="upload-meta"><strong>{fileName}</strong><span>Removing background…</span></div>
                 </div>
               ) : (
                 <button

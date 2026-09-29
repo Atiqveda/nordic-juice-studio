@@ -80,12 +80,12 @@ h1 > span { color: #858980; font-weight: 450; }
 .upload-filled { min-height: 72px; position: relative; display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.025); }
 .upload-thumb { height: 49px; width: 49px; background: #d3d6c7; border-radius: 6px; overflow: hidden; display: grid; place-items: center; flex: 0 0 auto; }
 .upload-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.upload-thumb-loading { background: rgba(200,255,0,.1); color: var(--lime); }
 .upload-meta { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 5px; padding-right: 30px; }
 .upload-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; font-weight: 570; }
 .upload-meta span { font-size: 8px; color: #81857b; }
 .remove-image { position: absolute; top: 8px; right: 8px; border: 0; background: none; color: #777b72; cursor: pointer; padding: 3px; }
 .remove-image:hover { color: white; }
-.upload-bg-spinner { position: absolute; top: 10px; right: 34px; color: var(--lime); }
 .font-select-row { display: flex; gap: 8px; margin-top: 10px; }
 .font-chip { flex: 1; height: 32px; border-radius: 6px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.035); color: #d7d9d2; font-size: 9px; cursor: pointer; text-transform: capitalize; }
 .font-chip:hover { border-color: rgba(200,255,0,.4); }
