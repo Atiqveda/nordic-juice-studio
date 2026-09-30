@@ -54,7 +54,9 @@ const modelOptions = [
 
 export default function ProductStudio() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [productImage, setProductImage] = useState<string | null>(null);
+  const [bgRemovalError, setBgRemovalError] = useState("");
   const [fileName, setFileName] = useState("");
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [creatorId, setCreatorId] = useState("product");
@@ -116,17 +118,34 @@ export default function ProductStudio() {
     }
 
     setFileName(file.name);
+    setOriginalImage(null);
+    setProductImage(null);
+    setBgRemovalError("");
     setIsRemovingBg(true);
     try {
+      const originalDataUrl = await readAsDataUrl(file);
+      setOriginalImage(originalDataUrl);
+
       const bgRemovalModuleUrl = "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.mjs";
       const { removeBackground } = await (import(
         /* webpackIgnore: true */ bgRemovalModuleUrl
       ) as Promise<typeof import("@imgly/background-removal")>);
       const cutout = await removeBackground(file);
-      setProductImage(await readAsDataUrl(cutout));
-    } catch {
-      setError("Background removal isn’t available right now, using your original photo.");
-      setProductImage(await readAsDataUrl(file));
+      const cutoutDataUrl = await readAsDataUrl(cutout);
+
+      if (!(await hasIsolatedSubject(cutoutDataUrl))) {
+        throw new Error("We couldn’t find a clear product outline in that photo.");
+      }
+      setProductImage(cutoutDataUrl);
+    } catch (bgError) {
+      console.error("Background removal failed", bgError);
+      setOriginalImage(null);
+      setProductImage(null);
+      setBgRemovalError(
+        bgError instanceof Error && bgError.message
+          ? bgError.message
+          : "We couldn’t isolate your product from its background. Try a photo with more contrast between the product and the background.",
+      );
     } finally {
       setIsRemovingBg(false);
     }
@@ -194,7 +213,9 @@ export default function ProductStudio() {
   }
 
   function resetImage() {
+    setOriginalImage(null);
     setProductImage(null);
+    setBgRemovalError("");
     setFileName("");
     setImages([]);
     setError("");
@@ -274,6 +295,14 @@ export default function ProductStudio() {
                 <div className="upload-filled upload-processing">
                   <div className="upload-thumb upload-thumb-loading"><LoaderCircle className="spin" size={20} /></div>
                   <div className="upload-meta"><strong>{fileName}</strong><span>Removing background…</span></div>
+                </div>
+              ) : bgRemovalError ? (
+                <div className="upload-filled upload-processing" role="alert">
+                  <div className="upload-thumb">
+                    {originalImage ? <img src={originalImage} alt="Original upload, product not isolated" /> : <X size={20} />}
+                  </div>
+                  <div className="upload-meta"><strong>Couldn’t isolate your product</strong><span>{bgRemovalError} Try another photo.</span></div>
+                  <button className="remove-image" type="button" onClick={resetImage} aria-label="Try another image"><X size={15} /></button>
                 </div>
               ) : (
                 <button
@@ -517,6 +546,9 @@ function ThreeBottlePreview({ productImage }: { productImage: string }) {
         const THREE = await (import(/* webpackIgnore: true */ threeUrl) as Promise<any>);
         if (cancelled || !container) return;
 
+        const productImageEl = await loadHTMLImage(productImage);
+        if (cancelled || !container) return;
+
         const width = container.clientWidth || 320;
         const height = container.clientHeight || 320;
         const scene = new THREE.Scene();
@@ -529,9 +561,17 @@ function ThreeBottlePreview({ productImage }: { productImage: string }) {
         container.innerHTML = "";
         container.appendChild(renderer.domElement);
 
-        const texture = new THREE.TextureLoader().load(productImage);
+        const texture = new THREE.Texture(productImageEl);
+        texture.needsUpdate = true;
         if ("colorSpace" in texture && "SRGBColorSpace" in THREE) texture.colorSpace = THREE.SRGBColorSpace;
-        const geometry = new THREE.CylinderGeometry(1.4, 1.4, 3.6, 64, 1, true);
+        // Bend the flat cutout across a small arc (not a full 360° wrap) so it reads as a
+        // convincing 3D tilt without stretching the image or inventing unseen sides of the product.
+        // Sizing from the real image aspect ratio keeps the original silhouette undistorted.
+        const aspect = (productImageEl.naturalWidth || 1) / (productImageEl.naturalHeight || 1);
+        const bendAngle = Math.PI / 6;
+        const baseHeight = 3.2;
+        const radius = (baseHeight * aspect) / bendAngle;
+        const geometry = new THREE.CylinderGeometry(radius, radius, baseHeight, 64, 1, true, -bendAngle / 2, bendAngle);
         const material = new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide, transparent: true, roughness: 0.35, metalness: 0.05 });
         const mesh = new THREE.Mesh(geometry, material);
         scene.add(mesh);
@@ -757,6 +797,49 @@ function readAsDataUrl(blob: Blob): Promise<string> {
     reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read image."));
     reader.onerror = () => reject(new Error("Could not read image."));
     reader.readAsDataURL(blob);
+  });
+}
+
+function loadHTMLImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load the product image for the 3D preview."));
+    image.src = src;
+  });
+}
+
+// Confirms the cutout actually has a transparent background and a visible subject, not an all-opaque or all-transparent result.
+function hasIsolatedSubject(dataUrl: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const sampleSize = 64;
+      const canvas = document.createElement("canvas");
+      canvas.width = sampleSize;
+      canvas.height = sampleSize;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        resolve(false);
+        return;
+      }
+      context.drawImage(image, 0, 0, sampleSize, sampleSize);
+      try {
+        const { data } = context.getImageData(0, 0, sampleSize, sampleSize);
+        let transparentPixels = 0;
+        let opaquePixels = 0;
+        for (let i = 3; i < data.length; i += 4) {
+          if (data[i] < 10) transparentPixels++;
+          else if (data[i] > 240) opaquePixels++;
+        }
+        const totalPixels = sampleSize * sampleSize;
+        resolve(transparentPixels / totalPixels > 0.02 && opaquePixels / totalPixels > 0.02);
+      } catch {
+        resolve(false);
+      }
+    };
+    image.onerror = () => resolve(false);
+    image.src = dataUrl;
   });
 }
 
